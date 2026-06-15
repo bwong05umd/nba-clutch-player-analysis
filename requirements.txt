@@ -1,0 +1,19 @@
+# Core data + numerics
+pandas==2.3.3
+numpy==2.2.6
+scipy==1.15.3
+
+# Modeling
+scikit-learn==1.7.2
+
+# NBA data source
+nba_api==1.11.4
+
+# Visualization
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# Notebook tooling (run / regenerate)
+jupyter==1.1.1
+nbformat==5.10.4
+nbconvert==7.17.1
