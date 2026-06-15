@@ -1196,6 +1196,219 @@ print(df.sort_values("ensemble_rank")[
      "ensemble_score"]].head(15).round(1).to_string(index=False))''')
 
 # ---------------------------------------------------------------------------
+# CELL 12 - Stress test: uncertainty & persistence (markdown)
+# ---------------------------------------------------------------------------
+md("""\
+## Cell 12 — Stress-testing the ranking: uncertainty & persistence
+
+The ensemble shows the ranking is robust to *weighting* choices — but that's not the
+same as the ranking being *real*. Two deeper questions decide whether we can honestly
+crown a "most clutch player":
+
+1. **How noisy are the numbers?** Clutch samples are tiny (tens of shot attempts over
+   five seasons), so a clutch TS% or PPG is an *estimate* with real uncertainty. We
+   attach **95% bootstrap confidence intervals** that scale with each player's actual
+   sample size. If the top players' intervals overlap, they are **statistically
+   indistinguishable** and a strict 1-2-3 ordering over-reads the data. *(This section
+   pools each player's clutch shots to size the intervals, so its TS%/PPG point estimates
+   can differ by a few tenths from the season-weighted figures in the summary table.)*
+2. **Is "clutch" even a repeatable skill?** If it is, a player's clutch level in the
+   *first* half of the window should predict the *second* half. We split the seasons
+   and correlate each player's early-vs-late clutch rates. A correlation near zero
+   means single-window clutch rankings largely capture **noise, not a stable trait** —
+   the most important caveat there is.""")
+
+# ---------------------------------------------------------------------------
+# CELL 12a - Bootstrap confidence intervals (code)
+# ---------------------------------------------------------------------------
+code('''\
+# --- Uncertainty: 95% bootstrap CIs that scale with each player's clutch sample ---
+# Clutch rates come from tens of attempts, so they carry large error bars. We
+# Monte-Carlo resample using each player's REAL clutch shot counts:
+#   TS%  -> condition on true-shooting attempts; resample makes per shot type
+#           (2P / 3P / FT) as binomial draws -> points -> TS%.
+#   PPG  -> resample clutch-game scoring as Poisson(observed PPG) over their GP.
+rng = np.random.default_rng(42)
+N_BOOT = 5000
+
+# Career clutch shot totals (same eligible star-seasons as the model) with 2P/3P/FT split.
+_shot_cols = ["PLAYER_ID", "GP", "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA", "PTS"]
+_raw = []
+for _s in SEASONS:
+    _cb = pd.read_csv(os.path.join(DATA_DIR, f"clutch_base_{_s}.csv"))
+    if _cb.empty:
+        continue
+    _cb = _cb[_shot_cols].copy()
+    _cb["SEASON"] = _s
+    _raw.append(_cb)
+_raw = pd.concat(_raw, ignore_index=True)
+_raw["KEY"] = list(zip(_raw["PLAYER_ID"], _raw["SEASON"]))
+_raw = _raw[_raw["KEY"].isin(eligible_keys)]                 # match the analyzed pool
+for _c in ["FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA", "PTS"]:  # per-game -> totals
+    _raw[_c] = _raw[_c] * _raw["GP"]
+career = (_raw.groupby("PLAYER_ID")[["GP", "FGM", "FGA", "FG3M", "FG3A",
+                                     "FTM", "FTA", "PTS"]].sum().round().astype(int))
+
+
+def _rate(made, att):
+    return made / att if att > 0 else 0.0
+
+
+def bootstrap_ci(row):
+    fg2a, fg2m = max(int(row.FGA - row.FG3A), 0), max(int(row.FGM - row.FG3M), 0)
+    fg3a, fg3m = int(row.FG3A), int(row.FG3M)
+    fta, ftm, gp = int(row.FTA), int(row.FTM), int(row.GP)
+    tsa = row.FGA + 0.44 * row.FTA
+    if tsa <= 0 or gp <= 0:
+        return pd.Series({k: np.nan for k in
+                          ["ts_obs", "ts_lo", "ts_hi", "ppg_obs", "ppg_lo", "ppg_hi"]})
+    p2, p3, pf = _rate(fg2m, fg2a), _rate(fg3m, fg3a), _rate(ftm, fta)
+    pts = (2 * rng.binomial(fg2a, p2, N_BOOT)
+           + 3 * rng.binomial(fg3a, p3, N_BOOT)
+           + rng.binomial(fta, pf, N_BOOT))
+    ts_draws = pts / (2 * tsa)
+    ppg_obs = row.PTS / gp
+    ppg_draws = rng.poisson(ppg_obs, (N_BOOT, gp)).mean(axis=1)
+    return pd.Series({
+        "ts_obs": row.PTS / (2 * tsa),
+        "ts_lo": np.percentile(ts_draws, 2.5), "ts_hi": np.percentile(ts_draws, 97.5),
+        "ppg_obs": ppg_obs,
+        "ppg_lo": np.percentile(ppg_draws, 2.5), "ppg_hi": np.percentile(ppg_draws, 97.5),
+    })
+
+
+ci = career.apply(bootstrap_ci, axis=1)
+ci_df = df.merge(ci, left_on="PLAYER_ID", right_index=True, how="left")
+ranked = ci_df.sort_values("composite_score", ascending=False)
+
+# --- Chart: top-12 clutch TS% with 95% CI error bars ---
+plot_ci = ranked.head(12).iloc[::-1]
+ts_mid = plot_ci["ts_obs"] * 100
+err = np.clip(np.vstack([ts_mid - plot_ci["ts_lo"] * 100,
+                         plot_ci["ts_hi"] * 100 - ts_mid]), 0, None)
+fig, ax = plt.subplots(figsize=(11, 8))
+ax.errorbar(ts_mid, plot_ci["PLAYER_NAME"], xerr=err, fmt="o", color="#264653",
+            ecolor="#e76f51", elinewidth=2, capsize=4, markersize=7)
+leader = ranked.iloc[0]
+ax.axvspan(leader["ts_lo"] * 100, leader["ts_hi"] * 100, color="#e9c46a", alpha=0.25,
+           label=f"{leader['PLAYER_NAME']} 95% CI")
+ax.set_xlabel("Clutch True Shooting %  (95% bootstrap CI)")
+ax.set_title("How certain are the clutch-efficiency numbers?\\n"
+             "Tiny samples -> wide, overlapping intervals",
+             fontsize=15, weight="bold")
+ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
+ax.legend(loc="lower right", fontsize=10)
+stamp(fig)
+plt.tight_layout()
+plt.show()
+
+# --- How many of the top 10 are statistically tied with the leader? ---
+top10 = ranked.head(10)
+lead_lo, lead_hi = leader["ts_lo"], leader["ts_hi"]
+ts_overlap = top10[(top10["ts_hi"] >= lead_lo) & (top10["ts_lo"] <= lead_hi)]
+lead_plo, lead_phi = leader["ppg_lo"], leader["ppg_hi"]
+ppg_overlap = top10[(top10["ppg_hi"] >= lead_plo) & (top10["ppg_lo"] <= lead_phi)]
+
+show = top10.assign(
+    TS=lambda d: (d["ts_obs"] * 100).round(1),
+    TS_CI=lambda d: "[" + (d["ts_lo"] * 100).round(0).astype(int).astype(str) + ", "
+                    + (d["ts_hi"] * 100).round(0).astype(int).astype(str) + "]",
+    PPG=lambda d: d["ppg_obs"].round(1),
+    PPG_CI=lambda d: "[" + d["ppg_lo"].round(1).astype(str) + ", "
+                     + d["ppg_hi"].round(1).astype(str) + "]")
+print("Clutch rate estimates with 95% bootstrap CIs (top 10 by composite):")
+print(show[["PLAYER_NAME", "TEAM", "TS", "TS_CI", "PPG", "PPG_CI"]].to_string(index=False))
+print(f"\\n{len(ts_overlap)} of the top 10 overlap the leader's clutch-TS% interval, and "
+      f"{len(ppg_overlap)} overlap on PPG.")
+print("=> On the raw clutch rates, the top tier is statistically indistinguishable; a strict "
+      "1-2-3 ordering reads more precision into the data than the sample sizes support.")''')
+
+# ---------------------------------------------------------------------------
+# CELL 12b - Persistence / split-half (code)
+# ---------------------------------------------------------------------------
+code('''\
+# --- Persistence: does clutch performance carry over from one half to the next? ---
+# If "clutch" is a real, stable skill, early-window rates should predict late-window
+# rates. We split the seasons, compute each player's clutch TS% and PPG per half
+# (eligible star-seasons, with a minimum sample floor), and correlate across players.
+from scipy.stats import pearsonr
+
+EARLY, LATE = SEASONS[:3], SEASONS[3:]
+MIN_TSA_HALF, MIN_GP_HALF = 12, 3   # require a minimally stable sample in EACH half
+
+
+def half_totals(season_list):
+    rows = []
+    for _s in season_list:
+        _cb = pd.read_csv(os.path.join(DATA_DIR, f"clutch_base_{_s}.csv"))
+        if _cb.empty:
+            continue
+        _cb = _cb[_shot_cols].copy()
+        _cb["SEASON"] = _s
+        rows.append(_cb)
+    r = pd.concat(rows, ignore_index=True)
+    r["KEY"] = list(zip(r["PLAYER_ID"], r["SEASON"]))
+    r = r[r["KEY"].isin(eligible_keys)]
+    for _c in ["FGA", "FTA", "PTS"]:
+        r[_c] = r[_c] * r["GP"]
+    agg = r.groupby("PLAYER_ID").agg(GP=("GP", "sum"), FGA=("FGA", "sum"),
+                                     FTA=("FTA", "sum"), PTS=("PTS", "sum"))
+    agg["tsa"] = agg["FGA"] + 0.44 * agg["FTA"]
+    agg["ts"] = agg["PTS"] / (2 * agg["tsa"]).replace(0, np.nan)
+    agg["ppg"] = agg["PTS"] / agg["GP"].replace(0, np.nan)
+    return agg
+
+
+e = half_totals(EARLY).add_suffix("_e")
+l = half_totals(LATE).add_suffix("_l")
+both = e.join(l, how="inner")
+both = both[(both["tsa_e"] >= MIN_TSA_HALF) & (both["tsa_l"] >= MIN_TSA_HALF)
+           & (both["GP_e"] >= MIN_GP_HALF) & (both["GP_l"] >= MIN_GP_HALF)]
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+results = {}
+for ax, (metric, label, scale) in zip(
+        axes, [("ts", "Clutch TS%", 100), ("ppg", "Clutch PPG", 1)]):
+    x, y = both[f"{metric}_e"] * scale, both[f"{metric}_l"] * scale
+    rs, ps = spearmanr(x, y)
+    results[metric] = rs
+    ax.scatter(x, y, s=45, alpha=0.7, color="#2a9d8f", edgecolor="white")
+    lim = [min(x.min(), y.min()) * 0.95, max(x.max(), y.max()) * 1.05]
+    ax.plot(lim, lim, ls="--", color="grey", lw=1, label="perfect persistence (y = x)")
+    b1, b0 = np.polyfit(x, y, 1)
+    xs = np.array(lim)
+    ax.plot(xs, b0 + b1 * xs, color="#e76f51", lw=2, label="best fit")
+    ax.set_xlabel(f"{label} — early ({EARLY[0]} … {EARLY[-1]})")
+    ax.set_ylabel(f"{label} — late ({LATE[0]} … {LATE[-1]})")
+    ax.set_title(f"{label}: Spearman r = {rs:.2f} (p = {ps:.2f})",
+                 fontsize=13, weight="bold")
+    ax.legend(fontsize=9)
+fig.suptitle("Does clutch performance persist? (early half vs. late half, per player)",
+             fontsize=15, weight="bold")
+stamp(fig)
+plt.tight_layout()
+plt.show()
+
+for metric, label in [("ts", "Clutch TS%"), ("ppg", "Clutch PPG")]:
+    rs, ps = spearmanr(both[f"{metric}_e"], both[f"{metric}_l"])
+    rp, pp = pearsonr(both[f"{metric}_e"], both[f"{metric}_l"])
+    print(f"{label} persistence: n={len(both)} players | "
+          f"Spearman r={rs:+.2f} (p={ps:.2f}) | Pearson r={rp:+.2f} (p={pp:.2f})")
+
+def _level(r):
+    return "near-zero" if abs(r) < 0.3 else "moderate" if abs(r) < 0.6 else "strong"
+
+print(f"\\nVerdict (n={len(both)} players -- small, so read directionally):")
+print(f"  - Clutch EFFICIENCY (TS%) persistence is {_level(results['ts'])} "
+      f"(Spearman {results['ts']:+.2f}).")
+print(f"  - Clutch VOLUME (PPG) persistence is {_level(results['ppg'])} "
+      f"(Spearman {results['ppg']:+.2f}).")
+print("Interpretation: clutch *shot-making efficiency* barely carries over (mostly small-sample "
+      "noise), while *scoring volume* persists more -- but that largely reflects that usage/role "
+      "is stable, not that 'clutch' is. Net: read the leaderboard as a DESCRIPTION of who "
+      "delivered in this window, not a PREDICTION of who is durably clutch.")''')
+
+# ---------------------------------------------------------------------------
 # CELL 15 - Limitations & bias (markdown)
 # ---------------------------------------------------------------------------
 md("""\
@@ -1208,16 +1421,19 @@ Reading the leaderboard responsibly means knowing where it can mislead:
 | **Eligibility cutoff is binary** | A team's clear #3 who outplayed the #2 is excluded; the 2nd star on a weak team is included over a great team's 3rd option. | `STARS_PER_TEAM` and the usage/scoring `USG_SCORING_BLEND` are tunable in Cell 1; per-season eligibility means a player only counts in the years he led. |
 | **Team-quality confound** | Clutch *win rate* and *+/-* reward stars on good teams regardless of individual play. | **De-weighted on purpose** for this model (+/- 10%, win-rate 5%); delivery metrics (PPG, TS%, usage, elimination) carry 75%; the regression confirms winning is largely team-driven (modest R²). |
 | **Volume vs. opportunity** | Stars on deep runs accumulate more clutch minutes and more Game 6/7s. | All scoring is **rate-based**; the sample multiplier is **capped** at `SAMPLE_FULL_CONFIDENCE`, so accumulation can't buy rank past the cap. |
-| **Small-sample volatility** | A few clutch possessions can spike TS% or +/-. | 50-minute floor, √ capped multiplier, and **percentile** (not min-max) normalization within the star pool. |
+| **Small-sample volatility** | A few clutch possessions can spike TS% or +/-. | 50-minute floor, √ capped multiplier, and **percentile** (not min-max) normalization within the star pool; **Cell 12** adds 95% bootstrap CIs that show the top tier is statistically indistinguishable. |
+| **"Clutch" may not be a stable skill** | A single-window ranking can capture noise rather than a durable trait. | **Cell 12** runs a split-half persistence test (early vs. late seasons); read the result as how much the leaderboard *describes* this window vs. *predicts* future clutch play. |
 | **Correlated inputs** | A weighted sum double-counts overlapping signals. | Cross-checked with PCA, an equal-weight baseline, and a winsorized-z variant; ensemble + Spearman agreement. |
 | **Elimination = full-game, not clutch-only** | G6/7 Game Score reflects the whole game, not just clutch minutes. | Stated explicitly; G6/7 chosen as the highest-leverage proxy available at scale. |
 | **Consistency = overall playoff scoring CV** | Not strictly clutch-only. | Documented; capped at a 10% weight. |
 | **No opponent/role adjustment** | Defensive difficulty isn't modeled. | Out of scope; noted as future work (e.g. opponent-adjusted clutch +/-). |
 
-**Bottom line:** this is now a **superstar-delivery** ranking — it asks which #1/#2
+**Bottom line:** this is a **superstar-delivery** ranking — it asks which #1/#2
 option produces efficiently under pressure, not which role player is quietly
-efficient. Lean on the **ensemble** column when you want the result least sensitive
-to any single modeling choice.""")
+efficient. Lean on the **ensemble** column for the result least sensitive to any
+single modeling choice — but read the **Cell 12** stress test first: given the tiny
+clutch samples, the top tier is best treated as a *statistically-tied shortlist*
+describing this window, not a precise, predictive 1-2-3 ordering.""")
 
 # ---------------------------------------------------------------------------
 # FINAL CELL - styled summary table

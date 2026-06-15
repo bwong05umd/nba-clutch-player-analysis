@@ -80,20 +80,36 @@ Precise definitions are what keep this project honest:
 | **K-Means** (silhouette-selected *k*) | scikit-learn | Surfaces clutch player **archetypes** |
 | **Linear Regression** (5-fold CV R²) | scikit-learn | Which clutch skills track winning |
 | **3-method ensemble** + Spearman | scipy / pandas | Robustness check on the ranking |
+| **Bootstrap confidence intervals** | numpy | Quantifies how noisy the tiny clutch samples are |
+| **Split-half persistence test** | scipy | Tests whether "clutch" is a repeatable skill or noise |
 
 Supporting: `StandardScaler`, winsorization (5th/95th-pct clipping), weighted aggregation.
+
+### Stress test: how much should you trust the ranking?
+
+Two deliberate honesty checks beyond the leaderboard:
+- **Uncertainty** — clutch rates come from only ~40–150 shot attempts over five seasons, so
+  each TS%/PPG gets a 95% bootstrap CI that scales with the player's real sample. Result:
+  **all 10 of the top players' clutch-TS% intervals overlap** — the top tier is *statistically
+  indistinguishable*, so a strict 1-2-3 ordering over-reads the data.
+- **Persistence** — splitting the window in half, clutch **efficiency** (TS%) shows
+  **near-zero** year-over-year correlation (Spearman ≈ −0.08) while **volume** (PPG) persists
+  moderately (≈ +0.56). Takeaway: the leaderboard *describes* who delivered in this window
+  more than it *predicts* who is durably "clutch."
 
 ---
 
 ## 📊 Visualizations
 
-The notebook produces nine charts, including:
+The notebook produces eleven charts, including:
 - Top-20 clutch leaderboard
 - Clutch efficiency (TS%) vs. impact (+/-), sized by usage and colored by composite
 - Elimination-game specialists (Game 6/7 uplift)
 - Most consistent playoff scorers
 - Year-over-year clutch trend for the top 10
 - PCA loadings, K-Means archetypes, regression coefficients, and a method-agreement heatmap
+- Bootstrap confidence intervals on clutch TS% (uncertainty)
+- Split-half persistence scatters for TS% and PPG (is clutch repeatable?)
 
 ---
 
