@@ -1269,9 +1269,9 @@ summary_cols = {
 top10_tbl = df.head(10)[list(summary_cols.keys())].rename(columns=summary_cols).copy()
 
 # Convert fractional rate stats to percentages for display.
-for c in ["Clutch TS%", "Clutch FT%", "Clutch Win%"]:
+# (TS%, FT%, Win% AND USG% are all stored as fractions, e.g. 0.464 = 46.4%.)
+for c in ["Clutch TS%", "Clutch FT%", "Clutch Win%", "Clutch USG%"]:
     top10_tbl[c] = top10_tbl[c] * 100
-top10_tbl["Clutch USG%"] = top10_tbl["Clutch USG%"]  # already a percentage figure
 
 styled = (top10_tbl.style
           .hide(axis="index")

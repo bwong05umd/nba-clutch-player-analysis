@@ -10,22 +10,30 @@ Clutch Score** — then proves the ranking is robust by re-scoring it three inde
 
 ---
 
-## 📈 Key results
+## 📈 Key results — Top 10 clutch players
 
-The leaderboard is reported as an **ensemble** of three scoring methods, so it doesn't hinge
-on any single set of weights. Top of the board:
+The full leaderboard with every metric that feeds the score (NBA Playoffs 2021-22 → 2025-26).
+**Clutch Score** is the domain-weighted composite; **Ensemble** is the robustness-checked score
+averaged across three methods (lean on it when you want the result least sensitive to weighting).
 
-| Rank | Player | Team | Ensemble | Notes |
-|------|--------|------|---------:|-------|
-| 1 | Shai Gilgeous-Alexander | OKC | 100.0 | Tops every method |
-| 2 | Jalen Brunson | NYK | 95.9 | #1 on the raw composite (82.9); 2025-26 champion |
-| 3 | Stephen Curry | GSW | 91.8 | |
-| 4 | Jayson Tatum | BOS | 83.7 | |
-| 5 | James Harden | CLE | 73.5 | |
-| 5 | Nikola Jokić | DEN | 73.5 | |
+| Rank | Player | Team | Clutch Score | Ensemble | Clutch PPG | Clutch TS% | Clutch USG% | Clutch +/- | Clutch FT% | Clutch Win% | Elim ΔGmSc | Clutch Min |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | Jalen Brunson | NYK | 82.9 | 95.9 | 4.3 | 56.0% | 44.5% | +2.0 | 79.2% | 62.5% | +0.7 | 149 |
+| 2 | Shai Gilgeous-Alexander | OKC | 61.2 | 100.0 | 4.7 | 62.5% | 42.0% | +1.3 | 96.3% | 61.1% | -1.1 | 76 |
+| 3 | Stephen Curry | GSW | 56.7 | 91.8 | 3.9 | 56.2% | 38.6% | +1.0 | 91.0% | 61.1% | +3.5 | 66 |
+| 4 | Jayson Tatum | BOS | 55.7 | 83.7 | 2.2 | 57.7% | 28.2% | +0.1 | 89.6% | 57.1% | +2.0 | 118 |
+| 5 | James Harden | CLE | 46.2 | 73.5 | 3.1 | 63.0% | 31.4% | -0.4 | 70.6% | 50.0% | -1.4 | 83 |
+| 6 | Nikola Jokić | DEN | 46.1 | 73.5 | 2.8 | 52.2% | 36.1% | -0.2 | 73.8% | 54.8% | -3.2 | 108 |
+| 7 | LeBron James | LAL | 38.3 | 59.2 | 2.3 | 47.0% | 31.5% | -0.9 | 81.2% | 35.3% | +2.2 | 71 |
+| 8 | Anthony Edwards | MIN | 37.4 | 51.0 | 2.4 | 55.2% | 29.2% | +0.8 | 94.4% | 53.8% | -3.5 | 87 |
+| 9 | Donovan Mitchell | CLE | 37.0 | 53.1 | 3.1 | 45.3% | 39.8% | -0.5 | 82.7% | 35.0% | +0.6 | 74 |
+| 10 | Jalen Williams | OKC | 34.7 | 53.1 | 3.0 | 60.1% | 24.7% | +1.1 | 77.8% | 56.2% | -4.9 | 69 |
 
-The three scoring methods agree at **Spearman 0.88–0.94** — high agreement means the ranking
-is a property of the data, not an artifact of arbitrary weighting choices.
+> **Reading it:** Brunson tops the headline composite (his 2025-26 title run shows up in the
+> numbers), while Shai leads the ensemble — he ranks #1 under two of the three scoring methods,
+> so he's the most *consistently* top-ranked once you stop trusting any single weighting. The
+> three methods agree at **Spearman 0.88–0.94**, meaning the ranking reflects the data, not an
+> artifact of arbitrary weights.
 
 ---
 
